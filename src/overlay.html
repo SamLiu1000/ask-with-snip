@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>ask-with-snip Snip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="overlay">
+  <!-- The frozen frame fills the screen. Snip coordinates are converted in JS by the
+       natural-pixels / display-pixels ratio, so the selected region matches what the
+       user sees at any system scaling. -->
+  <img id="shot" alt="">
+  <div id="shade" class="full"></div>
+  <div id="rect"></div>
+  <div id="size"></div>
+  <div id="guide-v" class="guide"></div>
+  <div id="guide-h" class="guide"></div>
+  <div id="hint" data-i18n="按住左键拖动框选；或者点一下定起点、移动鼠标、再点框内确认 · Esc 取消">按住左键拖动框选；或者点一下定起点、移动鼠标、再点框内确认 · Esc 取消</div>
+  <div id="screen-error" hidden></div>
+
+  <script src="common.js"></script>
+  <script src="overlay.js"></script>
+</body>
+</html>

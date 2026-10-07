@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "ask-with-snip 本地窗口共用的最小权限集：前端只需要事件监听（接收流式输出）、无边框窗口拖动，以及拖动窗口边缘缩放。窗口的创建/显示/隐藏都在 Rust 侧做，不经过 IPC，因此不需要额外的 window 权限。网页版窗口（webchat-<账号>，加载的是远程站点）刻意不在这个列表里：远程页面对 Tauri 命令一律没有权限，即使以后 Tauri 放宽了对远程来源的默认限制也不会漏。多账号的窗口 label 是动态的（webchat-<账号名>），天然不在任何列表里。",
+  "windows": ["overlay", "panel", "settings", "hub", "toast"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
+  ]
+}

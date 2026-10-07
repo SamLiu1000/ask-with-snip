@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title data-i18n="ask-with-snip 设置">ask-with-snip 设置</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="settings">
+  <h1 data-i18n="ask-with-snip 设置">ask-with-snip 设置</h1>
+  <p class="lede">
+    <span data-i18n="接口按 OpenAI 兼容协议调用，所以只要服务商支持">接口按 OpenAI 兼容协议调用，所以只要服务商支持</span>
+    <code>/chat/completions</code>
+    <span data-i18n="且模型能读图，填哪家都可以。">且模型能读图，填哪家都可以。</span><br>
+    <span data-i18n="API Key 只保存在你本机的配置文件里，不会上传到任何第三方（除了你自己填的服务商）。">API Key 只保存在你本机的配置文件里，不会上传到任何第三方（除了你自己填的服务商）。</span>
+  </p>
+
+  <fieldset>
+    <legend data-i18n="接口配置">接口配置</legend>
+
+    <div class="hint" style="margin-bottom:9px">
+      <span data-i18n="可以存好几套（比如一套国内直连、一套中转），点一下就切换成它，当前启用的那张会高亮。">可以存好几套（比如一套国内直连、一套中转），点一下就切换成它，当前启用的那张会高亮。</span>
+      <span data-i18n="下面填的地址、Key、模型名都属于">下面填的地址、Key、模型名都属于</span><strong data-i18n="当前这张">当前这张</strong><span data-i18n="。">。</span>
+    </div>
+
+    <div id="profile-list"></div>
+
+    <div class="profile-actions">
+      <button id="btn-add-profile" data-i18n="存为新配置">存为新配置</button>
+      <button id="btn-rename-profile" data-i18n="重命名" data-i18n-title="给当前配置改个名字" title="给当前配置改个名字">重命名</button>
+      <span class="spacer"></span>
+      <span class="hint" id="profile-hint"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="模型接口">模型接口</legend>
+
+    <label>
+      <span data-i18n="常见服务商（只帮你填地址和模型名，不改变下面的内容）">常见服务商（只帮你填地址和模型名，不改变下面的内容）</span>
+      <select id="preset"></select>
+    </label>
+
+    <label>
+      <span data-i18n="接口地址 base url">接口地址 base url</span>
+      <input type="text" id="base_url" placeholder="https://api.openai.com/v1" spellcheck="false">
+      <div class="hint">
+        <span data-i18n="填到">填到</span> <code>/v1</code> <span data-i18n="这一层就行，程序会自动补上">这一层就行，程序会自动补上</span>
+        <code>/chat/completions</code><span data-i18n="。">。</span>
+        <span data-i18n="只填域名时会自动补">只填域名时会自动补</span> <code>/v1</code><span data-i18n="；如果服务商的路径不是 v1（比如智谱是">；如果服务商的路径不是 v1（比如智谱是</span>
+        <code>/api/paas/v4</code><span data-i18n="），就按服务商文档填全。">），就按服务商文档填全。</span>
+      </div>
+    </label>
+
+    <label>
+      <span data-i18n="API Key">API Key</span>
+      <input type="password" id="api_key" data-i18n-ph="粘贴你的 Key" placeholder="粘贴你的 Key" spellcheck="false" autocomplete="off">
+      <div class="hint" data-i18n="以明文保存在本机配置文件里（具体位置见页面底部），请自行注意该文件的权限。">以明文保存在本机配置文件里（具体位置见页面底部），请自行注意该文件的权限。</div>
+    </label>
+
+    <label>
+      <span data-i18n="模型名称">模型名称</span>
+      <input type="text" id="model" placeholder="gpt-4o-mini" spellcheck="false" list="model-list">
+      <datalist id="model-list"></datalist>
+      <div class="hint" data-i18n="必须填服务商当前提供的、支持图片输入的模型名，写错会返回 400 或 404。">必须填服务商当前提供的、支持图片输入的模型名，写错会返回 400 或 404。</div>
+    </label>
+
+    <label class="full">
+      <span data-i18n="接口代理（可选）">接口代理（可选）</span>
+      <input type="text" id="proxy" placeholder="127.0.0.1:7890" spellcheck="false">
+      <div class="hint">
+        <span data-i18n="这套接口的请求走哪个代理（host:port，或 http://、socks5:// 开头）。留空 = 直连。">这套接口的请求走哪个代理（host:port，或 http://、socks5:// 开头）。留空 = 直连。</span>
+        <span data-i18n="属于">属于</span><strong data-i18n="当前这套配置">当前这套配置</strong><span data-i18n="：中转要代理、国内直连不用，混着存各走各的。网页版的代理在下面「使用方式」里，两边互不影响。">：中转要代理、国内直连不用，混着存各走各的。网页版的代理在下面「使用方式」里，两边互不影响。</span>
+      </div>
+    </label>
+
+    <label class="full">
+      <span data-i18n="额外请求头（可选，JSON 对象）">额外请求头（可选，JSON 对象）</span>
+      <input type="text" id="extra_headers" placeholder='{"X-Custom":"value"}' spellcheck="false">
+      <div class="hint" data-i18n="有些中转服务需要额外头时用得上。留空即不发送。">有些中转服务需要额外头时用得上。留空即不发送。</div>
+    </label>
+
+    <div class="actions">
+      <button id="btn-test" data-i18n="测试连接">测试连接</button>
+      <span class="spacer"></span>
+      <span id="test-result" class="hint"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="使用方式">使用方式</legend>
+
+    <div class="grid">
+      <label>
+        <span data-i18n="全局热键">全局热键</span>
+        <input type="text" id="hotkey" placeholder="Ctrl+Shift+A" spellcheck="false">
+        <div class="hint" id="hotkey-hint"><span data-i18n="写法如">写法如</span> <code>Ctrl+Shift+A</code><span data-i18n="、">、</span><code>Alt+Q</code><span data-i18n="；">；</span><strong data-i18n="点进输入框直接按键盘即可录制">点进输入框直接按键盘即可录制</strong><span data-i18n="（Esc 取消）。保存后立即生效。">（Esc 取消）。保存后立即生效。</span></div>
+      </label>
+
+      <label>
+        <span data-i18n="请求超时（秒）">请求超时（秒）</span>
+        <input type="number" id="timeout_secs" min="10" max="600" step="5">
+      </label>
+
+      <label>
+        <span data-i18n="界面主题">界面主题</span>
+        <select id="theme">
+          <option value="light" data-i18n="浅色">浅色</option>
+          <option value="dark" data-i18n="深色">深色</option>
+        </select>
+        <div class="hint" data-i18n="保存后所有窗口立即换肤。">保存后所有窗口立即换肤。</div>
+      </label>
+
+      <label>
+        <span data-i18n="网页版代理（可选）">网页版代理（可选）</span>
+        <input type="text" id="webchat_proxy" placeholder="127.0.0.1:7890" spellcheck="false">
+        <div class="hint" data-i18n="网页版走哪家站点都用它（国内直连不上 ChatGPT/Gemini/Claude 时填这个）。留空 = 直连。">网页版走哪家站点都用它（国内直连不上 ChatGPT/Gemini/Claude 时填这个）。留空 = 直连。</div>
+      </label>
+    </div>
+
+    <label class="full">
+      <span data-i18n="系统提示词">系统提示词</span>
+      <textarea id="system_prompt" rows="4"></textarea>
+      <div class="hint" data-i18n="每次请求都会带上，用来固定回答的语言和风格。">每次请求都会带上，用来固定回答的语言和风格。</div>
+    </label>
+
+    <div class="switch">
+      <input type="checkbox" id="continue_conversation" data-i18n-title="框选后接着当前对话继续">
+      <span data-i18n="框选后接着当前对话继续">框选后接着当前对话继续</span>
+    </div>
+    <div class="hint" style="margin:-6px 0 10px 24px">
+      <span data-i18n="不勾选（默认）：每次框选都是">不勾选（默认）：每次框选都是</span><strong data-i18n="新的一段对话">新的一段对话</strong><span data-i18n="，上下文互不影响，每张图从零开始理解。">，上下文互不影响，每张图从零开始理解。</span><br>
+      <span data-i18n="勾选：新截的图会">勾选：新截的图会</span><strong data-i18n="接到当前这段对话后面">接到当前这段对话后面</strong><span data-i18n="，前面看过的图仍在上下文里，适合&quot;截一段问一句、再截一段接着问&quot;（读长文档、翻长代码）。注意每轮的图都会随请求一起发出去，攒得越长越贵。这条也能在问答窗口里临时切换。">，前面看过的图仍在上下文里，适合"截一段问一句、再截一段接着问"（读长文档、翻长代码）。注意每轮的图都会随请求一起发出去，攒得越长越贵。这条也能在问答窗口里临时切换。</span>
+    </div>
+
+    <div class="switch">
+      <input type="checkbox" id="autostart">
+      <span data-i18n="开机自动启动（写注册表 Run 项）">开机自动启动（写注册表 Run 项）</span>
+    </div>
+
+    <div class="actions">
+      <button id="btn-try" data-i18n="立即试一下框选">立即试一下框选</button>
+      <span class="hint" data-i18n="不用记热键，点这里等同于按一次全局热键（不用先保存）">不用记热键，点这里等同于按一次全局热键（不用先保存）</span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="图片压缩（省 token 用）">图片压缩（省 token 用）</legend>
+
+    <div class="grid">
+      <label>
+        <span data-i18n="长边上限（像素）">长边上限（像素）</span>
+        <input type="number" id="max_image_edge" min="256" max="4096" step="64">
+        <div class="hint" data-i18n="1568 是大多数视觉模型的最优输入尺寸。再大模型内部也会压，只是白付 token 钱。">
+          1568 是大多数视觉模型的最优输入尺寸。再大模型内部也会压，只是白付 token 钱。
+        </div>
+      </label>
+
+      <label>
+        <span data-i18n="JPEG 质量">JPEG 质量</span>
+        <input type="number" id="jpeg_quality" min="40" max="100" step="1">
+        <div class="hint" data-i18n="报错信息和代码截图建议保持 85 以上，不然小字会糊。">报错信息和代码截图建议保持 85 以上，不然小字会糊。</div>
+      </label>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button class="primary" id="btn-save" data-i18n="保存">保存</button>
+    <button id="btn-close" data-i18n="关闭">关闭</button>
+    <span class="spacer"></span>
+    <span class="hint" id="config-path"></span>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

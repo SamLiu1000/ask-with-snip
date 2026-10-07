@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>ask-with-snip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="panel">
+  <!-- A frameless window has no native resize border on Windows; these eight strips hand dragging to the system resize loop -->
+  <div class="rz rz-n" data-resize="North"></div>
+  <div class="rz rz-s" data-resize="South"></div>
+  <div class="rz rz-w" data-resize="West"></div>
+  <div class="rz rz-e" data-resize="East"></div>
+  <div class="rz rz-nw" data-resize="NorthWest"></div>
+  <div class="rz rz-ne" data-resize="NorthEast"></div>
+  <div class="rz rz-sw" data-resize="SouthWest"></div>
+  <div class="rz rz-se" data-resize="SouthEast"></div>
+
+  <div id="bar" data-tauri-drag-region>
+    <span class="title">ask-with-snip</span>
+    <span class="spacer"></span>
+    <button class="ghost" id="btn-backend" data-i18n-title="切换提问走哪条路" title="切换提问走哪条路">接口</button>
+    <!-- Low-frequency actions (copy / show webchat / reload webchat) go into the "More" menu; the top bar keeps only high-frequency buttons -->
+    <div id="more-box">
+      <button class="ghost" id="btn-more" data-i18n-title="更多操作" title="更多操作">⋯</button>
+      <div id="more-menu" hidden>
+        <button class="menu-row" id="btn-copy" data-i18n="复制" data-i18n-title="复制整段对话" title="复制整段对话">复制</button>
+        <button class="menu-row" id="btn-reveal" hidden data-i18n="显示网页" data-i18n-title="把网页版窗口调出来：登录、或者看那边出了什么事">显示网页</button>
+        <button class="menu-row" id="btn-reload" hidden data-i18n="刷新网页" data-i18n-title="让网页版窗口重新加载当前页：白屏、卡在验证页、代理刚改完时按一下">刷新网页</button>
+      </div>
+    </div>
+    <!-- Web accounts: each account has its own login session (several providers can be logged in at once); click to pick an account, the last option adds one -->
+    <!-- Account menu: each row carries a "use proxy" checkbox (domestic and overseas accounts are mixed); click a name to switch accounts -->
+    <div id="account-box" hidden>
+      <button class="ghost" id="account-btn" data-i18n-title="选择用哪个网页账号（登录态互相独立）" title="选择用哪个网页账号（登录态互相独立）"><span data-i18n="账号">账号</span> ▾</button>
+      <div id="account-menu" hidden></div>
+    </div>
+    <select id="site-select" hidden data-i18n-title="当前账号用哪个站点" title="当前账号用哪个站点"></select>
+    <button class="ghost" id="btn-login" hidden data-i18n="登录" data-i18n-title="弹出当前账号的网页窗口，登录 / 看现场" title="弹出当前账号的网页窗口，登录 / 看现场">登录</button>
+    <button class="ghost" id="btn-again" data-i18n="重选" data-i18n-title="重新框选" title="重新框选">重选</button>
+    <button class="ghost" id="btn-lang" data-i18n-title="切换语言 / Switch language" title="切换语言 / Switch language">EN</button>
+    <button class="ghost" id="btn-settings" data-i18n-title="设置" title="设置">⚙</button>
+    <button class="ghost" id="btn-close" data-i18n-title="收起到托盘" title="收起到托盘">−</button>
+  </div>
+
+  <div id="body">
+    <aside id="sidebar">
+      <div class="side-head">
+        <span data-i18n="对话记录">对话记录</span>
+        <span class="spacer"></span>
+        <button id="btn-new-chat" data-i18n="＋ 新建" data-i18n-title="另起一段新对话（没发出去的截图会带过去）" title="另起一段新对话（没发出去的截图会带过去）">＋ 新建</button>
+        <button id="btn-clear-history" data-i18n="清空" data-i18n-title="删除全部记录" title="删除全部记录">清空</button>
+      </div>
+      <div id="history-list"></div>
+    </aside>
+
+    <main id="main">
+      <div id="shot-strip" data-tauri-drag-region>
+        <!-- Film strip: "+" captures another shot (you can take several in a row); shots taken so far are on the right, click to select/deselect (highlighted = will be sent with the question) -->
+        <div id="film"></div>
+        <!-- Single fallback preview shown when the film strip is empty (viewing old records). Visibility is fully managed by renderFilm -->
+        <img id="thumb" alt="截图预览" hidden>
+      </div>
+
+      <!-- Conversation area plus the "tick rail" navigator on the right: one tick per turn, click to jump to that turn -->
+      <div id="thread-wrap">
+        <div id="thread"></div>
+        <div id="turn-rail" data-i18n-title="对话进度" title="对话进度"></div>
+      </div>
+
+      <div id="composer">
+        <div id="presets"></div>
+        <div class="row">
+          <textarea id="prompt" rows="2" data-i18n-ph="想问什么？回车发送，Shift+回车换行" placeholder="想问什么？回车发送，Shift+回车换行"></textarea>
+          <!-- The toggle above the ask button: whether the next snip starts a new conversation or continues this one.
+               Clicking switches it immediately; the change takes effect at once and is persisted. -->
+          <div class="send-col">
+            <button id="btn-continue" data-i18n="接着上文" data-i18n-title="决定下次框选是另起一段对话，还是接在当前这段后面" title="决定下次框选是另起一段对话，还是接在当前这段后面">接着上文</button>
+            <button class="primary" id="btn-send" data-i18n="提问">提问</button>
+          </div>
+        </div>
+        <div id="status"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

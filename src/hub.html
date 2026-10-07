@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>ask-with-snip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="hub">
+  <h1>ask-with-snip</h1>
+  <p class="sub" data-i18n="框选屏幕上的任意区域，直接提问">Snip any region on screen and ask away</p>
+
+  <button class="primary" id="btn-snip">
+    <span data-i18n="开始框选">Start snipping</span>
+    <small id="hotkey-line">也可以随时按 Ctrl+Shift+A</small>
+  </button>
+
+  <div class="row">
+    <button id="btn-history" data-i18n="对话记录">History</button>
+    <button id="btn-settings" data-i18n="设置">Settings</button>
+    <button id="btn-quit" class="danger" data-i18n="退出程序">Quit</button>
+  </div>
+
+  <p class="note">
+    <span data-i18n="这个窗口只是入口，关掉它程序仍在后台运行。">This window is just an entry point; the app keeps running if you close it.</span><br>
+    <span data-i18n="没看到托盘图标是正常的 —— Windows 11 会把新图标收进溢出区，点任务栏时钟旁边的 ^ 就能找到，左键单击即可框选。">Can't see the tray icon? On Windows 11 new icons are tucked into the overflow area — click the <kbd>^</kbd> next to the clock and left-click the icon to snip.</span><br>
+    <span data-i18n="要完全退出，请用托盘图标右键菜单里的「退出」。">To quit completely, use "Exit" in the tray icon's right-click menu.</span>
+  </p>
+
+  <script src="common.js"></script>
+  <script src="hub.js"></script>
+</body>
+</html>

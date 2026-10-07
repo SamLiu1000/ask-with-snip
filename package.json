@@ -1,0 +1,13 @@
+{
+  "name": "ask-with-snip",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "test:frontend": "node tools/panel_logic_test.cjs && node tools/overlay_logic_test.cjs && node tools/settings_logic_test.cjs && node tools/webchat_collect_test.cjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
