@@ -149,6 +149,7 @@ const IDS = [
   "btn-copy", "btn-continue", "btn-backend", "btn-reveal", "btn-reload",
   "film", "turn-rail", "account-box", "account-btn", "account-menu", "site-select", "btn-login",
   "more-box", "more-menu", "btn-more",
+  "lightbox", "lightbox-img", "lightbox-select", "lightbox-delete", "lightbox-close",
 ];
 const elements = {};
 for (const id of IDS) elements[id] = new El(id === "prompt" ? "textarea" : "div");
@@ -810,12 +811,21 @@ function check(label, condition, detail) {
   check("两张里只有一张高亮（高亮的才会发送）",
     filmItems().filter((i) => i.classList.contains("selected")).length === 1,
     String(filmItems().filter((i) => i.classList.contains("selected")).length));
+  // 点击缩略图现在打开放大预览；选中/取消挪进了预览里的按钮（50px 的缩略图
+  // 上误触一下就悄悄改了要发什么，太容易踩，也太难发现）。
   filmItems()[1].fire("click");
   await settle(2);
-  check("点一下选中/取消，调的是 toggle_staged", calls.some((c) => c.command === "toggle_staged" && c.args.index === 1));
+  check("点缩略图打开放大预览", elements["lightbox"].hidden === false
+    && elements["lightbox-img"].src === "data:image/jpeg;base64,ST2");
+  check("预览里是「选中发送」按钮（这张还没选中）",
+    elements["lightbox-select"].textContent === "选中发送" && elements["lightbox-select"].hidden === false);
+  await elements["lightbox-select"].onclick();
+  await settle(2);
+  check("预览按钮调的是 toggle_staged", calls.some((c) => c.command === "toggle_staged" && c.args.index === 1));
   check("高亮跟着切换", filmItems()[1].classList.contains("selected"));
   check("点过之后两张都高亮",
     filmItems().filter((i) => i.classList.contains("selected")).length === 2);
+  check("按钮文字跟着翻面（已选中）", elements["lightbox-select"].textContent === "取消选中");
 
   console.log("\n[12k] 发完之后：已发出的那几张继续摆在胶片条上");
   {
@@ -866,13 +876,16 @@ function check(label, condition, detail) {
       filmItems().length === 3 && filmItems()[0].classList.contains("sent")
         && filmItems()[1].classList.contains("sent") && !filmItems()[2].classList.contains("sent"));
 
-    // 删暂存的那张：走 remove_staged，而且不该顺带切换选中
+    // 删暂存的那张：走 remove_staged，而且不该顺带切换选中。
+    // （点图本身开的是放大预览；选中在预览里操作，见 [12i]。）
     const callsBefore = calls.length;
     const stagedDel = filmDeletes()[2];
     const stagedImg = filmItems()[2];
     stagedImg.fire("click");
-    check("点图本身还是切换选中（toggle_staged）",
-      calls.slice(callsBefore).some((c) => c.command === "toggle_staged"));
+    check("点图打开的是预览（不切换选中）",
+      elements["lightbox"].hidden === false
+        && !calls.slice(callsBefore).some((c) => c.command === "toggle_staged"));
+    elements["lightbox-close"].fire("click");
     const beforeDel = calls.length;
     stagedDel.fire("click");
     await settle(2);

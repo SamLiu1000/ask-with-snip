@@ -84,6 +84,17 @@
     </main>
   </div>
 
+  <!-- Image lightbox: click a film-strip thumbnail to see it full-size.
+       Select/remove actions live in the bar; click the backdrop or press Esc to close. -->
+  <div id="lightbox" hidden>
+    <img id="lightbox-img" alt="截图放大预览">
+    <div id="lightbox-bar">
+      <button id="lightbox-select" hidden></button>
+      <button id="lightbox-delete" hidden></button>
+      <button id="lightbox-close" data-i18n="关闭">关闭</button>
+    </div>
+  </div>
+
   <script src="common.js"></script>
   <script src="panel.js"></script>
 </body>

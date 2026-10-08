@@ -5,6 +5,7 @@ pub mod config;
 pub mod history;
 pub mod webchat;
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
@@ -104,6 +105,15 @@ struct AppState {
     /// the receiver across awaits, and std's Receiver is not Send (the compiler
     /// rejects it; the sender side is synchronous, works fine either way).
     webchat_signal: Mutex<Option<tokio::sync::mpsc::UnboundedSender<String>>>,
+    /// The live window label per web account, when it had to diverge from the
+    /// default `webchat-<account>`. A dead window's registry slot never frees
+    /// (Tauri removes the label only on the native WM_DESTROY event, which
+    /// never arrives for an already-dead window), so when rebuilding we may
+    /// have to open the new window under a suffixed label (`-r1`, `-r2`, …);
+    /// login state is unaffected (the data directory stays keyed by the base
+    /// label). Everything that needs "the account's window" must look the
+    /// label up here first — see find_webchat_win.
+    webchat_live_labels: Mutex<HashMap<String, String>>,
     /// Cancel flag for the current turn. Set when the user presses "Cancel"; the
     /// running path sees it on its next loop iteration.
     cancel: Mutex<api::Cancel>,
@@ -1010,6 +1020,42 @@ fn webchat_url_host(url: &str) -> String {
         .to_ascii_lowercase()
 }
 
+/// The account's web-chat window, if one is **alive**.
+///
+/// Tries the label recorded in AppState first (a rebuild under a suffixed
+/// label), then the default `webchat-<account>`. A handle whose URL can't be
+/// read is a **ghost**: the registry still holds it, but the native window /
+/// WebView2 is gone — destroy it (no-op for a dead window, but tidy if it
+/// merely hasn't finished loading) and report None so the caller rebuilds.
+fn find_webchat_win(app: &AppHandle, account: &str) -> Option<tauri::WebviewWindow> {
+    let base = webchat::window_label(account);
+    let live = app
+        .state::<AppState>()
+        .webchat_live_labels
+        .lock()
+        .ok()
+        .and_then(|m| m.get(account).cloned());
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(l) = &live {
+        if l != &base {
+            candidates.push(l.clone());
+        }
+    }
+    candidates.push(base.clone());
+    for label in candidates {
+        if let Some(win) = app.get_webview_window(&label) {
+            if win.url().is_ok() {
+                return Some(win);
+            }
+            trace(&format!(
+                "web chat: window {label} is registered but unreadable (ghost); destroying the handle"
+            ));
+            let _ = win.destroy();
+        }
+    }
+    None
+}
+
 fn ensure_webchat(
     app: &AppHandle,
     visible: bool,
@@ -1017,7 +1063,7 @@ fn ensure_webchat(
     account: &config::WebchatAccount,
 ) -> Result<tauri::WebviewWindow, String> {
     let label = webchat::window_label(&account.name);
-    if let Some(win) = app.get_webview_window(&label) {
+    if let Some(win) = find_webchat_win(app, &account.name) {
         // Windows are reused per account name, but the site is a mutable property of
         // the account (the dropdown can change any time). A host mismatch means this
         // window was opened on the old site (in-page navigation after login doesn't
@@ -1031,14 +1077,27 @@ fn ensure_webchat(
             .next()
             .unwrap_or("")
             .to_string();
+        // A window whose URL can't be read is a **ghost**: the Tauri registry
+        // still holds the handle, but the native window / WebView2 is gone
+        // (left behind by a destroy() that never fully released the label).
+        // Treating the empty host as "keep reusing" meant show()/set_focus()
+        // landed on a dead webview forever — the user clicks "sign in" or
+        // "show page", nothing appears, and not even an error comes back
+        // (measured: reveal_webchat returned Ok in 3 ms with no window on
+        // screen). So an unreadable URL must trigger a rebuild, same as a
+        // host mismatch.
         let cur_host = win
             .url()
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_string()))
             .unwrap_or_default();
-        if !cur_host.is_empty()
-            && !cur_host.eq_ignore_ascii_case(&want_host)
-        {
+        if cur_host.is_empty() {
+            trace(&format!(
+                "web chat: account {}'s window handle is still registered but unreadable (ghost); rebuilding",
+                account.name
+            ));
+            let _ = win.destroy();
+        } else if !cur_host.eq_ignore_ascii_case(&want_host) {
             trace(&format!(
                 "web chat: account {}'s window is still on {}, switching to {}; rebuilding the window",
                 account.name, cur_host, want_host
@@ -1059,6 +1118,9 @@ fn ensure_webchat(
     for (other_label, other) in app.webview_windows() {
         if other_label.starts_with("webchat-") && other_label != label {
             let _ = other.destroy();
+            if let Ok(mut m) = app.state::<AppState>().webchat_live_labels.lock() {
+                m.retain(|_, v| v != &other_label);
+            }
         }
     }
 
@@ -1077,8 +1139,21 @@ fn ensure_webchat(
     // read-back channel for the driver (see webchat::on_title).
     let title_handle = app.clone();
 
-    // Login state isolated per account: an independent data directory per account
+    // Login state isolated per account: an independent data directory per account.
+    // Keyed by the **base** label: a rebuild under a suffixed window label still
+    // uses the same directory, so the login session survives the rebuild.
     let data_dir = crate::data_root(app).join("EBWebView").join(&label);
+    // WEBVIEW2_USER_DATA_FOLDER was set at startup for the **main** windows; on
+    // some WebView2 loader versions it takes precedence over the explicit
+    // data_directory passed here, which would point the webchat's environment at
+    // the main profile's folder — a second browser process on the same folder
+    // with different browser args fails to start, and the webview is torn down
+    // right after build() returns (symptom: "sign in" pops nothing, the window
+    // label lingers in the registry, the account's data directory stays empty).
+    // The main windows' environment is already created by now, so removing the
+    // variable here cannot disturb them; the explicit data_directory below then
+    // wins for this environment.
+    std::env::remove_var("WEBVIEW2_USER_DATA_FOLDER");
 
     // Browser args: the defaults + optional proxy + **one fixed CDP debug port per account**.
     // The debug port is for the driver: Gemini/Claude's editors intercept synthetic
@@ -1108,9 +1183,16 @@ fn ensure_webchat(
     // same name right after the old one is destroyed, before the registry frees, hits
     // "already exists" on the first try (verified: takes two clicks when logging in or
     // switching back to an account). Short retries absorb the async gap.
-    let make_builder = || {
+    //
+    // If the slot **never** frees (ghost window: the registry entry is only removed
+    // on the native WM_DESTROY event, which never arrives for an already-dead
+    // window — destroy() is a no-op there), fall back to a suffixed label
+    // (`webchat-<account>-r1`, `-r2`, …). The data directory stays keyed by the
+    // base label, so the login session is unaffected; the live label is recorded
+    // in AppState so find_webchat_win keeps locating the window.
+    let make_builder = |win_label: &str| {
         let handle = title_handle.clone();
-        let b = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url.clone()))
+        let b = WebviewWindowBuilder::new(app, win_label, WebviewUrl::External(url.clone()))
             .title(format!("Web chat ({} · {})", site.label, account.name))
             .inner_size(size.0, size.1)
             .min_inner_size(420.0, 320.0)
@@ -1130,24 +1212,59 @@ fn ensure_webchat(
             b.center()
         }
     };
-    let mut win = None;
-    for _ in 0..10 {
-        match make_builder().build() {
-            Ok(w) => {
-                win = Some(w);
-                break;
-            }
-            Err(e) => {
-                if !e.to_string().contains("already exists") {
-                    return Err(format!("Failed to create the web-chat window: {e}"));
+    let build_with_retries = |win_label: &str, retries: u32| -> Result<tauri::WebviewWindow, String> {
+        let mut win = None;
+        for _ in 0..retries {
+            match make_builder(win_label).build() {
+                Ok(w) => {
+                    win = Some(w);
+                    break;
                 }
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                Err(e) => {
+                    if !e.to_string().contains("already exists") {
+                        return Err(format!("Failed to create the web-chat window: {e}"));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                }
             }
         }
-    }
-    let win = win.ok_or_else(|| {
-        "Failed to create the web-chat window: the old window's registry slot never freed up (already exists for 3 seconds straight)".to_string()
-    })?;
+        win.ok_or_else(|| "already exists".to_string())
+    };
+    let mut win = match build_with_retries(&label, 10) {
+        Ok(w) => {
+            if let Ok(mut m) = app.state::<AppState>().webchat_live_labels.lock() {
+                m.remove(&account.name);
+            }
+            w
+        }
+        Err(_) => {
+            let mut last_err = String::new();
+            let mut built = None;
+            for gen in 1..=8u32 {
+                let win_label = format!("{label}-r{gen}");
+                trace(&format!(
+                    "web chat: registry slot for {label} never freed (ghost); rebuilding under {win_label}"
+                ));
+                match build_with_retries(&win_label, 2) {
+                    Ok(w) => {
+                        built = Some(w);
+                        break;
+                    }
+                    Err(e) => last_err = e,
+                }
+            }
+            let w = built.ok_or_else(|| {
+                format!(
+                    "Failed to create the web-chat window: the old window's registry slot never freed up, and all suffixed labels are taken too (last error: {last_err})"
+                )
+            })?;
+            let used_label = w.label().to_string();
+            if let Ok(mut m) = app.state::<AppState>().webchat_live_labels.lock() {
+                m.insert(account.name.clone(), used_label);
+            }
+            w
+        }
+    };
     if visible {
         let _ = win.set_focus();
     }
@@ -1944,11 +2061,16 @@ async fn update_webchat_accounts(
             None => true, // new account: no window, nothing to do
         };
         if changed {
-            let label = webchat::window_label(&acc.name);
-            if let Some(win) = app.get_webview_window(&label) {
+            if let Some(win) = find_webchat_win(&app, &acc.name) {
                 trace(&format!("update_webchat_accounts: {}'s proxy/site changed; rebuilding the window", acc.name));
                 let _ = win.hide();
                 let _ = win.destroy();
+            }
+            // The destroyed window's label (base or suffixed) is recorded in
+            // AppState; drop it so the next open rebuilds under the base label
+            // when possible.
+            if let Ok(mut m) = app.state::<AppState>().webchat_live_labels.lock() {
+                m.remove(&acc.name);
             }
         }
     }
@@ -1964,9 +2086,12 @@ async fn update_webchat_accounts(
 #[tauri::command]
 async fn delete_webchat_account(app: AppHandle, name: String) -> Result<(), String> {
     let label = webchat::window_label(&name);
-    if let Some(win) = app.get_webview_window(&label) {
+    if let Some(win) = find_webchat_win(&app, &name) {
         let _ = win.hide();
         let _ = win.destroy();
+    }
+    if let Ok(mut m) = app.state::<AppState>().webchat_live_labels.lock() {
+        m.remove(&name);
     }
     let dir = crate::data_root(&app).join("EBWebView").join(&label);
     if dir.exists() {
@@ -1999,9 +2124,7 @@ async fn reveal_webchat(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn reload_webchat(app: AppHandle) -> Result<(), String> {
     let cfg = config::load(&app);
-    let label = webchat::window_label(&cfg.active_webchat().name);
-    let win = app
-        .get_webview_window(&label)
+    let win = find_webchat_win(&app, &cfg.active_webchat().name)
         .ok_or_else(|| "The web-chat window has never been opened; click \"Show web\" first to bring it up".to_string())?;
     win.eval("location.reload()")
         .map_err(|e| format!("Reload failed: {e}"))
@@ -2211,8 +2334,7 @@ async fn cancel_ask(app: AppHandle, state: tauri::State<'_, AppState>) -> Result
     trace("cancel_ask: cancel flag set");
     // Also stop the current account's web-chat window (nothing to stop when it's closed)
     let cfg = config::load(&app);
-    let label = webchat::window_label(&cfg.active_webchat().name);
-    if let Some(win) = app.get_webview_window(&label) {
+    if let Some(win) = find_webchat_win(&app, &cfg.active_webchat().name) {
         let _ = win.eval(webchat::stop_js());
     }
     Ok(())

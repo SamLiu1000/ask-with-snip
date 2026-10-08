@@ -25,6 +25,11 @@
   const siteSelect = document.getElementById("site-select");
   const revealEl = document.getElementById("btn-reveal");
   const reloadEl = document.getElementById("btn-reload");
+  const lightbox = document.getElementById("lightbox");
+  const lightboxImg = document.getElementById("lightbox-img");
+  const lightboxSelect = document.getElementById("lightbox-select");
+  const lightboxDelete = document.getElementById("lightbox-delete");
+  const lightboxClose = document.getElementById("lightbox-close");
 
   // Quick-ask buttons: they live in named lists (see presetLists) so you can
   // keep several sets and switch between them; the picker above the buttons
@@ -519,13 +524,19 @@
       box.append(img, del);
       film.appendChild(box);
     };
-    // Lay out the already-sent ones first: dimmed, not clickable, just to show "these are what was just sent".
+    // Lay out the already-sent ones first: dimmed, just to show "these are what was just sent".
     // Without this, once staging clears after sending, only the single preview remains, making several shots look like one.
     for (const item of sent) {
       const done = document.createElement("img");
       done.className = "film-item sent";
       done.src = item.dataUrl;
-      done.title = t("已经发出去的图（不能再改选）");
+      done.title = t("已经发出去的图。点一下放大预览");
+      done.addEventListener("click", () => {
+        openLightbox({
+          src: item.dataUrl,
+          onDelete: () => call("remove_turn_image", { turn: item.turnIndex, image: item.imageIndex }),
+        });
+      });
       cell(
         done,
         () => call("remove_turn_image", { turn: item.turnIndex, image: item.imageIndex }),
@@ -537,23 +548,27 @@
       img.className = "film-item" + (item.selected ? " selected" : "");
       img.src = item.dataUrl;
       img.title = item.selected
-        ? t("已选中，会跟着下一次提问发出去。点一下取消")
-        : t("没选中。点一下选中它");
-      img.addEventListener("click", async () => {
-        try {
-          const selected = await call("toggle_staged", { index });
-          // Sync the local copy too: the pre-ask "at least one selected" check reads
-          // conversation.staged, and images moved here by "New" start unselected
-          if (conversation && conversation.staged && conversation.staged[index]) {
-            conversation.staged[index].selected = selected;
-          }
-          img.classList.toggle("selected", selected);
-          img.title = selected
-            ? t("已选中，会跟着下一次提问发出去。点一下取消")
-            : t("没选中。点一下选中它");
-        } catch (err) {
-          toast(String(err), "err");
-        }
+        ? t("已选中，会跟着下一次提问发出去。点一下放大预览")
+        : t("没选中。点一下放大预览，在预览里选中");
+      // Click opens the full-size preview; select/deselect moved into the
+      // lightbox bar (a mis-toggle on a 50px thumbnail was too easy to make
+      // and hard to notice).
+      img.addEventListener("click", () => {
+        lightbox._thumbEl = img;
+        openLightbox({
+          src: item.dataUrl,
+          selected: item.selected,
+          onToggle: async () => {
+            const selected = await call("toggle_staged", { index });
+            // Sync the local copy too: the pre-ask "at least one selected" check reads
+            // conversation.staged, and images moved here by "New" start unselected
+            if (conversation && conversation.staged && conversation.staged[index]) {
+              conversation.staged[index].selected = selected;
+            }
+            return selected;
+          },
+          onDelete: () => call("remove_staged", { index }),
+        });
       });
       cell(img, () => call("remove_staged", { index }), t("删掉这张（不发给 AI）"));
     }
@@ -565,12 +580,88 @@
     film.hidden = sent.length === 0 && staged.length === 0;
     // Only fall back to the single static preview when the film strip is empty (old records, or images that failed to load)
     legacyThumb.hidden = !(film.hidden && conv && conv.dataUrl);
-    if (legacyThumb.hidden) legacyThumb.removeAttribute("src");
-    else legacyThumb.src = conv.dataUrl;
+    if (legacyThumb.hidden) {
+      legacyThumb.removeAttribute("src");
+    } else {
+      legacyThumb.src = conv.dataUrl;
+      legacyThumb.title = t("点一下放大预览");
+      legacyThumb.onclick = () => openLightbox({ src: conv.dataUrl });
+    }
   }
 
   /** How many images the film strip had last: scroll only when a new one is added, don't disturb someone browsing back and forth */
   let filmCount = 0;
+
+  // ---------------------------------------------------------- Image lightbox
+
+  /**
+   * Full-size preview of a film-strip image. Clicking a thumbnail opens this
+   * instead of toggling selection (a mis-click on a 50px thumbnail silently
+   * changed what would be sent — hard to notice and hard to undo); selection
+   * and removal moved into the bar here, where the image is big enough to see
+   * what is being toggled.
+   *
+   * `onToggle` / `onDelete` are async; after they run the film strip redraws
+   * (renderFilm / refreshStaging), so the lightbox is closed first.
+   */
+  let lightboxOpen = false;
+  function openLightbox({ src, selected, onToggle, onDelete }) {
+    lightboxImg.src = src;
+    lightboxSelect.hidden = !onToggle;
+    lightboxDelete.hidden = !onDelete;
+    lightboxDelete.textContent = t("删除");
+    const renderSelect = (sel) => {
+      lightboxSelect.textContent = sel ? t("取消选中") : t("选中发送");
+      lightboxSelect.classList.toggle("primary", !sel);
+    };
+    if (onToggle) {
+      renderSelect(selected);
+      lightboxSelect.onclick = async () => {
+        try {
+          const sel = await onToggle();
+          renderSelect(sel);
+          // The film strip doesn't redraw on toggle; sync the border here.
+          lightbox._thumbEl?.classList.toggle("selected", sel);
+        } catch (err) {
+          toast(String(err), "err");
+        }
+      };
+    } else {
+      lightboxSelect.onclick = null;
+    }
+    if (onDelete) {
+      lightboxDelete.onclick = async () => {
+        closeLightbox();
+        try {
+          await onDelete();
+          // Same as the ✕ in the strip's corner: the Rust side is the source of
+          // truth, and without this redraw the deleted image stays on screen
+          // ("clicked delete, nothing changed").
+          await refreshStaging();
+        } catch (err) {
+          toast(String(err), "err");
+        }
+      };
+    } else {
+      lightboxDelete.onclick = null;
+    }
+    lightbox.hidden = false;
+    lightboxOpen = true;
+  }
+
+  function closeLightbox() {
+    if (!lightboxOpen) return;
+    lightbox.hidden = true;
+    lightboxImg.removeAttribute("src");
+    lightbox._thumbEl = null;
+    lightboxOpen = false;
+  }
+
+  // Backdrop click closes; clicks on the image / the button bar must not.
+  lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  lightboxClose.addEventListener("click", closeLightbox);
 
   function renderConversation(conv) {
     conversation = conv;
@@ -1704,6 +1795,13 @@
     // Esc during composition cancels the candidates; it shouldn't also close the panel
     if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape") {
+      // The lightbox sits above the panel: Esc closes the preview first, and
+      // only a second press hides the panel.
+      if (lightboxOpen) {
+        event.preventDefault();
+        closeLightbox();
+        return;
+      }
       event.preventDefault();
       call("hide_panel").catch(() => {});
     }

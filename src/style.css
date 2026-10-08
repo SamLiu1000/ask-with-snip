@@ -570,6 +570,46 @@ body.panel { display: flex; flex-direction: column; height: 100vh; }
 
 .film-item.selected { border-color: var(--accent); }
 
+/* Full-size image preview (lightbox). Sits above everything inside the panel;
+   the backdrop click and Esc close it, buttons in the bar operate on the image. */
+#lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(8, 10, 14, .82);
+  padding: 28px 36px 20px;
+}
+/* The hidden attribute must actually hide: the display:flex above would
+   otherwise out-rank it and the backdrop would cover the panel on startup. */
+#lightbox[hidden] { display: none; }
+#lightbox-img {
+  max-width: 100%;
+  max-height: calc(100% - 46px);
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #000;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, .5);
+}
+#lightbox-bar {
+  display: flex;
+  gap: 8px;
+}
+#lightbox-bar button {
+  min-width: 72px;
+}
+/* Deletion is destructive: colour it as such, same accent the ✕ uses on hover */
+#lightbox-delete {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+
 /* The column above the Ask button: Continue on top, Ask below, equal widths */
 .send-col {
   flex: none;
