@@ -2292,12 +2292,23 @@ fn main() {
             };
             if let Some(name) = account.clone() {
                 let label = ask_with_snip_lib::webchat::window_label(&name);
-                let dir = tauri::Manager::path(
-                    app.handle())
-                    .app_local_data_dir()
-                    .expect("cannot get the data directory")
-                    .join("EBWebView")
-                    .join(&label);
+                // Must match the main app's data_root: portable mode (an
+                // existing `<exe dir>\data` directory) wins, then the roaming
+                // config directory. This used to read app_local_data_dir —
+                // a directory the main app never puts login state in, so the
+                // probe silently calibrated against a different (logged-in)
+                // profile while the real window showed a login page.
+                let exe_dir = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+                let portable = exe_dir.map(|d| d.join("data"));
+                let root = match portable {
+                    Some(d) if d.join("config.json").exists() => d,
+                    _ => tauri::Manager::path(app.handle())
+                        .app_config_dir()
+                        .expect("cannot get the data directory"),
+                };
+                let dir = root.join("EBWebView").join(&label);
                 println!("(borrowing account {name}'s login state: {})", dir.display());
                 builder = builder.data_directory(dir);
             }

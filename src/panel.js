@@ -18,6 +18,7 @@
   const historyList = document.getElementById("history-list");
   const continueEl = document.getElementById("btn-continue");
   const backendEl = document.getElementById("btn-backend");
+  const themeBtn = document.getElementById("btn-theme");
   const accountBox = document.getElementById("account-box");
   const accountBtn = document.getElementById("account-btn");
   const accountMenu = document.getElementById("account-menu");
@@ -1751,8 +1752,24 @@
       const cfg = await call("get_config");
       setLanguage(cfg.language);
       applyTheme(cfg.theme);
-      listen("theme-changed", (e) => applyTheme(e.payload)).catch(() => {});
+      renderThemeBtn(cfg.theme);
+      listen("theme-changed", (e) => { applyTheme(e.payload); renderThemeBtn(e.payload); }).catch(() => {});
     } catch (_) { /* If unreadable, keep Chinese */ }
+
+    // Theme toggle in the top bar (moved out of settings): flip and save; every
+    // open window re-skins via the backend's theme-changed event.
+    themeBtn.addEventListener("click", async () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try {
+        const cfg = await call("get_config");
+        cfg.theme = next;
+        await call("save_config", { cfg });
+        applyTheme(next); // instant feedback; the broadcast event lands right after
+        renderThemeBtn(next);
+      } catch (err) {
+        toast(String(err), "err");
+      }
+    });
     setLanguage(getLanguage());
     buildPresets(); // quick-prompt buttons were built before the language was known; rebuild in the final one
     document.getElementById("btn-lang").addEventListener("click", async () => {
@@ -1915,6 +1932,13 @@
   let accounts = [];
   let activeAccount = "";
 
+  /** Default account names ("账号1" / "Account 1") follow the UI language;
+   *  user-renamed accounts are data and pass through unchanged. */
+  function accountDisplayName(name) {
+    const m = /^(?:账号|Account)\s*(\d+)$/.exec(name || "");
+    return m ? t("账号") + m[1] : (name || "");
+  }
+
   async function loadAccounts() {
     try {
       const cfg = await call("get_config");
@@ -1954,7 +1978,7 @@
 
     // The account button = the current account's name tag
     const siteName = (SITES.find(([id]) => id === (current ? current.site : "")) || SITES[0])[1];
-    accountBtn.textContent = siteName + " · " + (activeAccount || t("无账号")) + " ▾";
+    accountBtn.textContent = (activeAccount ? accountDisplayName(activeAccount) : t("无账号")) + " · " + siteName + " ▾";
 
     // Menu: each row is a checkbox (use proxy) + the account name
     accountMenu.textContent = "";
@@ -1986,7 +2010,7 @@
       });
 
       const label = document.createElement("span");
-      label.textContent = site2[1] + " · " + account.name + (onThisSite ? " ⚑" + t("代理") : "");
+      label.textContent = accountDisplayName(account.name) + " · " + site2[1] + (onThisSite ? " ⚑" + t("代理") : "");
       label.title = t("点一下切换到这个账号");
       label.addEventListener("click", async () => {
         activeAccount = account.name;
@@ -2121,6 +2145,13 @@
     }
     renderAccountSelects();
   });
+
+  /** Top-bar theme button: the icon shows the theme currently applied. */
+  function renderThemeBtn(theme) {
+    const dark = theme === "dark";
+    themeBtn.textContent = dark ? "🌙" : "☀";
+    themeBtn.title = dark ? t("当前：深色，点击切到浅色") : t("当前：浅色，点击切到深色");
+  }
 
   async function loadBackend() {
     try {

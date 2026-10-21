@@ -92,6 +92,9 @@ function buildCollectJs({ force = false, have = 0, haveReasoning = 0, baseAnswer
     ["__BASE_T__", String(baseThinks)],
     ["__STATE_SHAPE__", stateShape],
     ["__PAGE_DIAG__", pageDiag],
+    // The thinking fallback is gated per site in Rust; the test pages run the
+    // fallback-enabled variant (deepseek-shaped), which the old cases expect.
+    ["__THINK_FALLBACK__", "true"],
   ].reduce((acc, [from, to]) => acc.split(from).join(to), src);
 }
 

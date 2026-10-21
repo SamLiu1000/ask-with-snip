@@ -146,7 +146,7 @@ const IDS = [
   "thread", "thumb", "prompt", "btn-send", "status", "presets",
   "history-list", "btn-close", "btn-lang",
   "btn-settings", "btn-again", "btn-clear-history", "btn-new-chat",
-  "btn-copy", "btn-continue", "btn-backend", "btn-reveal", "btn-reload",
+  "btn-copy", "btn-continue", "btn-backend", "btn-reveal", "btn-reload", "btn-theme",
   "film", "turn-rail", "account-box", "account-btn", "account-menu", "site-select", "btn-login",
   "more-box", "more-menu", "btn-more",
   "lightbox", "lightbox-img", "lightbox-select", "lightbox-delete", "lightbox-close",

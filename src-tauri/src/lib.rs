@@ -1192,6 +1192,7 @@ fn ensure_webchat(
     // in AppState so find_webchat_win keeps locating the window.
     let make_builder = |win_label: &str| {
         let handle = title_handle.clone();
+        let popup_handle = title_handle.clone();
         let b = WebviewWindowBuilder::new(app, win_label, WebviewUrl::External(url.clone()))
             .title(format!("Web chat ({} · {})", site.label, account.name))
             .inner_size(size.0, size.1)
@@ -1201,6 +1202,36 @@ fn ensure_webchat(
             .data_directory(data_dir.clone())
             .on_document_title_changed(move |_win, title: String| {
                 webchat::on_title(&handle, &title);
+            })
+            // OAuth sign-ins (Claude's "Continue with Google", etc.) open a
+            // popup via window.open. Without a handler wry **swallows every
+            // new-window request** (SetHandled(true)), the popup never opens,
+            // the site never receives the OAuth callback, and the user just
+            // sees "sign-in failed". Host the popup in a real window of the
+            // SAME WebView2 environment (same profile, cookies and proxy via
+            // window_features) so the OAuth round-trip completes normally.
+            .on_new_window(move |url, features| {
+                use std::sync::atomic::{AtomicU64, Ordering};
+                static POPUP: AtomicU64 = AtomicU64::new(0);
+                let label = format!("webchat-popup-{}", POPUP.fetch_add(1, Ordering::Relaxed));
+                match WebviewWindowBuilder::new(
+                    &popup_handle,
+                    &label,
+                    WebviewUrl::External(url),
+                )
+                .title("Sign in")
+                .window_features(features)
+                // The webchat window itself is always-on-top; without this the
+                // popup would open underneath it and look like "nothing happened".
+                .always_on_top(true)
+                .build()
+                {
+                    Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+                    Err(err) => {
+                        eprintln!("Failed to open the sign-in popup: {err}");
+                        tauri::webview::NewWindowResponse::Deny
+                    }
+                }
             })
             // Float above everything like the panel: the panel is always-on-top, and
             // without this the new window would be covered by its own panel
@@ -2952,7 +2983,8 @@ pub fn run() {
                 .icon(tray_icon)
                 .menu(&menu)
                 .tooltip("ask-with-snip — snip a screenshot and ask")
-                // Left click snips directly; right click opens the menu
+                // Left click opens the conversation history; right click opens the menu
+                // (snipping stays on the hotkey and the tray menu's entry)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "snip" => spawn_snip(app),
@@ -2969,7 +3001,11 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        spawn_snip(tray.app_handle());
+                        // Left click opens the conversation history (snipping
+                        // stays on the hotkey and the tray menu's entry); must
+                        // build off the main thread — same deadlock rule as the
+                        // menu events above.
+                        open_off_main_thread(tray.app_handle(), "conversation history", open_history_panel);
                     }
                 });
 

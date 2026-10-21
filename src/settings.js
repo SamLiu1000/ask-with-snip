@@ -28,7 +28,9 @@
   const PROFILE_FIELDS = ["base_url", "api_key", "model", "extra_headers", "proxy"];
   const GLOBAL_FIELDS = [
     "hotkey", "timeout_secs", "system_prompt", "autostart", "continue_conversation",
-    "max_image_edge", "jpeg_quality", "webchat_proxy", "theme",
+    "max_image_edge", "jpeg_quality", "webchat_proxy",
+    // theme deliberately absent: it's toggled from the panel's top bar now, and
+    // save mutates the loaded config object, so the loaded value survives.
   ];
 
   const el = (id) => document.getElementById(id);
@@ -65,7 +67,6 @@
       max_image_edge: Number(el("max_image_edge").value) || 1568,
       jpeg_quality: Number(el("jpeg_quality").value) || 85,
       webchat_proxy: el("webchat_proxy").value.trim(),
-      theme: el("theme").value,
     };
   }
 

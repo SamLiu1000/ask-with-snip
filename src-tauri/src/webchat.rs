@@ -102,6 +102,11 @@ pub struct Site {
     /// Text of the sidebar "new chat" button. Empty = go back to the home page
     /// to start over (slower but always correct)
     pub new_chat_text: &'static str,
+    /// URL fragment that identifies "this is a conversation page" (used both
+    /// to store the resume link and to confirm a new chat really left the old
+    /// conversation). The sites differ: deepseek /a/chat/s/, chatgpt /c/,
+    /// claude /chat/, gemini /app/.
+    pub chat_url_marker: &'static str,
 }
 
 const DEEPSEEK: Site = Site {
@@ -122,24 +127,39 @@ const DEEPSEEK: Site = Site {
     think_toggle: Some((".ds-toggle-button", "ds-toggle-button--selected")),
     // Text of the sidebar "new chat" button on the real page — keep as-is for matching.
     new_chat_text: "开启新对话",
+    chat_url_marker: "/a/chat/s/",
 };
 
 const CHATGPT: Site = Site {
     id: "chatgpt",
     label: "ChatGPT",
     home: "https://chatgpt.com/",
-    composer: "#prompt-textarea",
+    // Recalibrated against the real page (probe --site chatgpt --dom, 2026-10):
+    // the composer is now a plain ProseMirror contenteditable — the old
+    // #prompt-textarea is gone, and with it the driver waited forever on
+    // "composer never appeared" while the page itself was fine.
+    composer: "div.ProseMirror",
     composer_is_textarea: false,
     // Attribute values inside selectors must always use **double quotes**: the
     // driver JS wraps selectors in single quotes, and a stray single quote is
     // a syntax error for the whole script (measured: chatgpt/claude returned
     // zero payloads because of this — symptom "the page answered / the input
     // box is right there, but the panel spins forever").
-    send: "button[data-testid=\"send-button\"]",
-    answer: "[data-message-author-role=\"assistant\"]",
+    // The send-button testid is gone with the redesign; keep it for older
+    // builds and lean on the localized aria-labels (SEND_JS additionally
+    // scans every button by label, so this is a hint list, not the only path).
+    send: "button[data-testid=\"send-button\"], button[aria-label*=\"发送\"], button[aria-label*=\"Send\"]",
+    // Recalibrated on the real page (probe --site chatgpt, 2026-10): the old
+    // [data-message-author-role="assistant"] no longer exists at all — the
+    // page renders replies as a markdown root marked by this style attribute.
+    // Chosen over [data-chatgpt-search-unit-key$=":assistant"] because that
+    // one also wraps the sr-only "ChatGPT 说：" heading, which would leak
+    // into the collected markdown.
+    answer: "[data-markdown-text-style=\"assistant-message\"]",
     think: None,
     think_toggle: None,
     new_chat_text: "",
+    chat_url_marker: "/c/",
 };
 
 const GEMINI: Site = Site {
@@ -154,6 +174,7 @@ const GEMINI: Site = Site {
     think: None,
     think_toggle: None,
     new_chat_text: "",
+    chat_url_marker: "/app/",
 };
 
 const CLAUDE: Site = Site {
@@ -162,12 +183,18 @@ const CLAUDE: Site = Site {
     home: "https://claude.ai/new",
     composer: "div.ProseMirror",
     composer_is_textarea: false,
-    // "发送消息" kept for matching the Chinese-localized aria-label.
-    send: "button[aria-label=\"Send message\"], button[aria-label=\"发送消息\"]",
-    answer: "div.font-claude-response",
+    // Recalibrated on the real page (probe --site claude --asktest, 2026-10):
+    // the send button's aria-label is gone (the stable hook is the testid);
+    // the old aria-labels stay for older builds.
+    send: "button[data-testid=\"chat-input-send\"], button[aria-label=\"Send message\"], button[aria-label=\"发送消息\"]",
+    // Recalibrated the same run: replies render inside a turn row marked by
+    // this testid; the old .font-claude-response class no longer exists, and
+    // with it the driver read 0 answers while the page was already answering.
+    answer: "[data-testid=\"assistant-message\"]",
     think: None,
     think_toggle: None,
     new_chat_text: "",
+    chat_url_marker: "/chat/",
 };
 
 /// Site registry. Looked up by id; unrecognized ids fall back to deepseek
@@ -217,7 +244,14 @@ const SETTLE_AFTER_NEW_CHAT: Duration = Duration::from_millis(900);
 /// Defined as `window.__snapiMD` so every later poll can call it directly.
 const MARKDOWN_JS: &str = r#"
 window.__snapiMD = (function () {
-  const SKIP = new Set(['SCRIPT', 'STYLE', 'SVG', 'BUTTON', 'TEXTAREA', 'INPUT', 'CANVAS']);
+  // TIME: Claude's action bar carries a relative timestamp ("现在") inside the
+  // reply container; it is chrome, not body text.
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'SVG', 'BUTTON', 'TEXTAREA', 'INPUT', 'CANVAS', 'TIME']);
+  // Screen-reader-only text (Claude ships a "Claude 已回复：<问题>" h2.sr-only
+  // at the top of every reply) must not leak into the markdown: as a heading
+  // it renders as a huge bold line, and the thinking fallback then re-reads
+  // it as "chain of thought" — the same passage shown twice.
+  const skipEl = (n) => n.classList && (n.classList.contains('sr-only') || /(^|\s)sr-only(\s|$)/.test(String(n.className)));
 
   const inlineOf = (node) => {
     let out = '';
@@ -229,6 +263,7 @@ window.__snapiMD = (function () {
     if (n.nodeType === 3) return n.nodeValue;
     if (n.nodeType !== 1) return '';
     if (SKIP.has(n.tagName)) return '';
+    if (skipEl(n)) return '';
     if (typeof n.className === 'string' && /citation/i.test(n.className)) return '';
 
     // Formula: prefer the raw LaTeX that KaTeX keeps around
@@ -297,6 +332,7 @@ window.__snapiMD = (function () {
       if (child.nodeType === 3) { push(child.nodeValue); continue; }
       if (child.nodeType !== 1) continue;
       if (SKIP.has(child.tagName)) continue;
+      if (skipEl(child)) continue;
       if (typeof child.className === 'string' && /citation/i.test(child.className)) continue;
 
       const tag = child.tagName;
@@ -474,7 +510,7 @@ const COLLECT_JS: &str = r#"
       || (lastT ? String(lastT.textContent || '').length : 0) !== (st.baseLenR || 0);
     if (freshT && thinks.length) {
       feed(st.r, norm(thinks[thinks.length - 1].textContent));
-    } else if (freshA && nodes.length) {
+    } else if (__THINK_FALLBACK__ && freshA && nodes.length) {
       // Fallback: when the class name changed, or this model has no thinking
       // block at all, go back to the old trick — take the text in the message
       // root **other than the answer** as the thinking process (filter list below).
@@ -1042,6 +1078,7 @@ fn collect_js_for_with(site: &Site, force: bool, have: usize, have_reasoning: us
                 // matches; querySelectorAll won't blow up
                 ("__ANSWER__", site.answer),
                 ("__THINK__", site.think.unwrap_or(".snapi-no-think")),
+                ("__THINK_FALLBACK__", if site.think.is_some() { "true" } else { "false" }),
                 ("__CHUNK__", &CHUNK.to_string()),
                 ("__TAG__", TAG),
                 ("__FORCE__", if force { "true" } else { "false" }),
@@ -1295,7 +1332,7 @@ where
 
     // 1. Wait for the page to be ready (the window may have just been created,
     //    the page still loading)
-    wait_ready(&win, &mut signal, site, timeout_secs).await?;
+    wait_ready(&win, &mut signal, site, timeout_secs, cancel).await?;
 
     // 2. The record holds the site conversation for this chat: deep-link back
     //    and continue. The site keeps the context itself; previous turns don't
@@ -1313,7 +1350,7 @@ where
             drop_signal(app);
             return Err(CANCELLED_MSG.into());
         }
-        wait_ready(&win, &mut signal, site, timeout_secs).await?;
+        wait_ready(&win, &mut signal, site, timeout_secs, cancel).await?;
         if cancel.is_cancelled() {
             drop_signal(app);
             return Err(CANCELLED_MSG.into());
@@ -1332,7 +1369,7 @@ where
     //    old conversation, mixing all context).
     let mut url_before = String::new();
     if turn.new_chat {
-        url_before = current_chat_url(&win, &mut signal).await;
+        url_before = current_chat_url(&win, &mut signal, site).await;
         crate::trace(&format!("webchat: starting a new chat, site URL before asking = {url_before:?}"));
         let _ = win.eval(new_chat_js(site));
         if nap(Duration::from_millis(600), cancel).await {
@@ -1370,7 +1407,7 @@ where
         // be confirmed, treat it as not switched and go back to the home page —
         // slower but always correct; never send the question into the old
         // conversation.
-        if !reloaded && !confirm_left_old_chat(&win, &mut signal, &url_before, cancel).await {
+        if !reloaded && !confirm_left_old_chat(&win, &mut signal, site, &url_before, cancel).await {
             crate::trace("webchat: clicked new chat but the URL didn't change, treating as failed; reopening from the home page");
             let home = site.home.replace('\\', "\\\\").replace('\'', "\'");
             let _ = win.eval(format!("location.href = '{home}'"));
@@ -1386,7 +1423,7 @@ where
                 drop_signal(app);
                 return Err(CANCELLED_MSG.into());
             }
-            wait_ready(&win, &mut signal, site, timeout_secs).await?;
+            wait_ready(&win, &mut signal, site, timeout_secs, cancel).await?;
             if cancel.is_cancelled() {
                 drop_signal(app);
                 return Err(CANCELLED_MSG.into());
@@ -1460,7 +1497,7 @@ Click \"Show page\" on the panel to check manually, then re-select the region an
             drop_signal(app);
             return Err(CANCELLED_MSG.into());
         }
-        wait_ready(&win, &mut signal, site, timeout_secs).await?;
+        wait_ready(&win, &mut signal, site, timeout_secs, cancel).await?;
         if cancel.is_cancelled() {
             drop_signal(app);
             return Err(CANCELLED_MSG.into());
@@ -1529,7 +1566,7 @@ Click \"Show page\" on the panel to check manually, then re-select the region an
     //    **before** drop_signal: once the channel is closed nobody receives the
     //    page's reports (measured: with the order flipped, webchat_url was
     //    always empty and "resume" never worked).
-    let mut site_url = current_chat_url(&win, &mut signal).await;
+    let mut site_url = current_chat_url(&win, &mut signal, site).await;
     // Safety net: if this round opened a "new chat" but the URL at the end
     // still sits on the pre-click conversation, the site never moved and the
     // round was actually sent into the old conversation. The old URL must never
@@ -1552,6 +1589,7 @@ Click \"Show page\" on the panel to check manually, then re-select the region an
 async fn current_chat_url(
     win: &tauri::WebviewWindow,
     signal: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+    site: &Site,
 ) -> String {
     const URL_JS: &str = r#"document.title = '__TAG__' + JSON.stringify({ url: location.href });"#;
     if win.eval(URL_JS.replace("__TAG__", TAG).as_str()).is_err() {
@@ -1561,7 +1599,7 @@ async fn current_chat_url(
     while let Ok(payload) = signal.try_recv() {
         if let Some(value) = parse_signal(&payload) {
             if let Some(url) = value.get("url").and_then(|v| v.as_str()) {
-                if url.contains("/a/chat/s/") {
+                if url.contains(site.chat_url_marker) {
                     return url.to_string();
                 }
             }
@@ -1578,6 +1616,7 @@ async fn current_chat_url(
 async fn confirm_left_old_chat(
     win: &tauri::WebviewWindow,
     signal: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+    site: &Site,
     url_before: &str,
     cancel: &crate::api::Cancel,
 ) -> bool {
@@ -1586,7 +1625,7 @@ async fn confirm_left_old_chat(
     }
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
-        let url = current_chat_url(win, signal).await;
+        let url = current_chat_url(win, signal, site).await;
         if url != url_before {
             return true;
         }
@@ -2345,11 +2384,19 @@ async fn wait_ready(
     signal: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
     site: &Site,
     timeout_secs: u64,
+    cancel: &crate::api::Cancel,
 ) -> Result<(), String> {
     let deadline =
         std::time::Instant::now() + Duration::from_secs(timeout_secs.clamp(5, 30));
     let mut report = PageReport::default();
     while std::time::Instant::now() < deadline {
+        // Cancel must win over "waiting for the composer": this loop used to
+        // ignore the flag entirely, so pressing cancel during a slow page load
+        // (proxied sites, a stuck Cloudflare check) did nothing until the
+        // full 30s readiness timeout burned down.
+        if cancel.is_cancelled() {
+            return Err(CANCELLED_MSG.into());
+        }
         win.eval(collect_js_for(site))
             .map_err(|e| format!("Failed to drive the web UI: {e}"))?;
         while let Ok(payload) = signal.try_recv() {
@@ -2362,6 +2409,9 @@ async fn wait_ready(
                 }
                 report.note(&value);
             }
+        }
+        if cancel.is_cancelled() {
+            return Err(CANCELLED_MSG.into());
         }
         sleep(POLL).await;
     }
@@ -2622,7 +2672,7 @@ mod tests {
         // One unreplaced placeholder throws in the page and is very hard to
         // hunt. Don't use "contains a double underscore" as the criterion:
         // window.__snapi is itself legitimate.
-        const PLACEHOLDERS: [&str; 17] = [
+        const PLACEHOLDERS: [&str; 18] = [
             "__COMPOSER__",
             "__ANSWER__",
             "__THINK__",
@@ -2640,6 +2690,7 @@ mod tests {
             "__MARKER__",
             "__STATE_SHAPE__",
             "__PAGE_DIAG__",
+            "__THINK_FALLBACK__",
         ];
         for (name, js) in [
             ("collect", collect_js()),

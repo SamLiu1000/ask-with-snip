@@ -1,14 +1,14 @@
 :root {
-  /* Dark theme: solid dark gray, same neutral family as the light theme */
-  --bg: #171a21;
-  --bg-soft: #1c202a;
-  --panel: #20242e;
-  --panel-2: #292f3c;
-  --panel-3: #333a49;
-  --border: #3a4353;
-  --border-soft: #2a3140;
-  --text: #e8ebf2;
-  --muted: #93a0b4;
+  /* Dark theme: neutral black, paired with the yellow accent ("black & yellow") */
+  --bg: #151515;
+  --bg-soft: #1b1b1b;
+  --panel: #1f1f1f;
+  --panel-2: #282828;
+  --panel-3: #323232;
+  --border: #3c3c3c;
+  --border-soft: #2a2a2a;
+  --text: #eaeaea;
+  --muted: #999999;
   --accent: #e8c268;
   --accent-bright: #f6d98d;
   --accent-dim: #93742f;
@@ -23,7 +23,7 @@
   --danger: #ff7b7b;
   --danger-dim: #8a4444;
   --ok: #45cfa5;
-  /* Amber gold: second accent — marks images/new things, complements the indigo */
+  /* Amber gold: marks images/new things; same family as the accent */
   --gold: #e8c268;
   --gold-bright: #f6d98d;
   --gold-dim: #93742f;
@@ -35,20 +35,20 @@
   --btn-shadow-press: inset 0 2px 4px rgba(0, 0, 0, .35);
   --btn-primary-shadow: 0 2px 8px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, .18);
   /* Semantic surfaces shared by both themes */
-  --btn-hover: #3a4252;
-  --btn-hover-2: #313947;
-  --btn-hover-border: #485364;
+  --btn-hover: #3a3a3a;
+  --btn-hover-2: #313131;
+  --btn-hover-border: #4a4a4a;
   --danger-hover: linear-gradient(180deg, #4a2c2e, #3e2628);
-  --input-bg: #0f1218;
-  --bar-top: #242b36;
-  --menu-bg: #0f131a;
-  --menu-hover: #1a1f27;
-  --sidebar-bg: #191d24;
-  --scrollbar: #3a4252;
-  --scrollbar-hover: #475060;
-  --code-bg: #0f131a;
+  --input-bg: #0e0e0e;
+  --bar-top: #232323;
+  --menu-bg: #0f0f0f;
+  --menu-hover: #1a1a1a;
+  --sidebar-bg: #181818;
+  --scrollbar: #3a3a3a;
+  --scrollbar-hover: #474747;
+  --code-bg: #0f0f0f;
   --faint-border: #8884;
-  --toast-grad: #252c38;
+  --toast-grad: #242424;
 }
 
 /* Light theme: applied via <html data-theme="light"> from the config's theme field.
@@ -65,19 +65,21 @@
   --border-soft: #e4e8ef;
   --text: #1c2230;
   --muted: #5d6a80;
-  --accent: #5158d8;
-  --accent-bright: #6d79f2;
-  --accent-dim: #a9b0f5;
-  --accent-glow: rgba(81, 88, 216, .22);
-  --accent-grad: linear-gradient(180deg, #6d79f2, #5157cf);
-  --accent-grad-hover: linear-gradient(180deg, #7e88f5, #5f68e0);
-  --accent-grad-active: linear-gradient(180deg, #5256c0, #4a54b8);
-  --on-accent: #ffffff;
-  --on-accent-soft: rgba(255, 255, 255, .78);
+  /* Yellow accent ("white & yellow"): dark enough amber for white surfaces,
+     dark text on the gold gradients — same pairing as the dark theme */
+  --accent: #c08a10;
+  --accent-bright: #d9a821;
+  --accent-dim: #e8d9a0;
+  --accent-glow: rgba(192, 138, 16, .25);
+  --accent-grad: linear-gradient(180deg, #e6bd45, #c08a10);
+  --accent-grad-hover: linear-gradient(180deg, #efca58, #cf9a1e);
+  --accent-grad-active: linear-gradient(180deg, #c9951a, #a87a0c);
+  --on-accent: #2a2005;
+  --on-accent-soft: rgba(42, 32, 5, .78);
   --danger: #d64545;
   --danger-dim: #e8b4b4;
   --ok: #17a077;
-  /* Amber gold: second accent — marks images/new things, complements the indigo.
+  /* Amber gold: marks images/new things; same yellow family as the accent.
      Darkened for contrast on white surfaces */
   --gold: #96731d;
   --gold-bright: #7c5c10;
